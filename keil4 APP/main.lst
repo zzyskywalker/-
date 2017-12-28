@@ -1,0 +1,266 @@
+C51 COMPILER V9.00   MAIN                                                                  12/22/2017 18:37:22 PAGE 1   
+
+
+C51 COMPILER V9.00, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN ..\obj\main.obj
+COMPILER INVOKED BY: H:\PRO\keil51\C51\BIN\C51.EXE ..\code\main.c BROWSE INCDIR(..\code;..\user) DEBUG OBJECTEXTEND PRIN
+                    -T(.\main.lst) OBJECT(..\obj\main.obj)
+
+line level    source
+
+   1          #include "config.h"
+   2          /************************************************************************************/
+   3          //      nAsrStatus 用来在main主程序中表示程序运行的状态，不是LD3320芯片内部的状态寄存器
+   4          //      LD_ASR_NONE:            表示没有在作ASR识别
+   5          //      LD_ASR_RUNING：         表示LD3320正在作ASR识别中
+   6          //      LD_ASR_FOUNDOK:         表示一次识别流程结束后，有一个识别结果
+   7          //      LD_ASR_FOUNDZERO:       表示一次识别流程结束后，没有识别结果
+   8          //      LD_ASR_ERROR:           表示一次识别流程中LD3320芯片内部出现不正确的状态
+   9          /***********************************************************************************/
+  10          uint8 idata nAsrStatus=0;       
+  11          void MCU_init(); 
+  12          void ProcessInt0(); //识别处理函数
+  13          void  delay(unsigned long uldata);
+  14          void    User_handle(uint8 dat);//用户执行操作函数
+  15          void Delay200ms();
+  16          void Led_test(void);//单片机工作指示
+  17          uint8_t G0_flag=DISABLE;//运行标志，ENABLE:运行。DISABLE:禁止运行 
+  18          sbit LED=P4^2;//信号指示灯
+  19          sbit PA1=P1^0; //定义IO口对应板上标号 P1.0
+  20          sbit PA2=P1^1;  //定义IO口对应板上标号 P1.1
+  21          sbit PA3=P1^2;  //.....
+  22          
+  23          /***********************************************************
+  24          * 名    称： void  main(void)
+  25          * 功    能： 主函数     程序入口
+  26          * 入口参数：  
+  27          * 出口参数：
+  28          * 说    明：                                     
+  29          * 调用方法： 
+  30          **********************************************************/ 
+  31          void  main(void)
+  32          {
+  33   1              uint8 idata nAsrRes;
+  34   1              uint8 i=0;
+  35   1              Led_test();
+  36   1              MCU_init();
+  37   1              LD_Reset();
+  38   1              UartIni(); /*串口初始化*/
+  39   1              nAsrStatus = LD_ASR_NONE;               //      初始状态：没有在作ASR
+  40   1              
+  41   1      
+  42   1              while(1)
+  43   1              {
+  44   2                      switch(nAsrStatus)
+  45   2                      {
+  46   3                              case LD_ASR_RUNING:
+  47   3                              case LD_ASR_ERROR:              
+  48   3                                      break;
+  49   3                              case LD_ASR_NONE:
+  50   3                              {
+  51   4                                      nAsrStatus=LD_ASR_RUNING;
+  52   4                                      if (RunASR()==0)        /*      启动一次ASR识别流程：ASR初始化，ASR添加关键词语，启动ASR运算*/
+  53   4                                      {
+  54   5                                              nAsrStatus = LD_ASR_ERROR;
+C51 COMPILER V9.00   MAIN                                                                  12/22/2017 18:37:22 PAGE 2   
+
+  55   5                                      }
+  56   4                                      break;
+  57   4                              }
+  58   3                              case LD_ASR_FOUNDOK: /* 一次ASR识别流程结束，去取ASR识别结果*/
+  59   3                              {                               
+  60   4                                      nAsrRes = LD_GetResult();               /*获取结果*/
+  61   4                                      User_handle(nAsrRes);//用户执行函数 
+  62   4                                      nAsrStatus = LD_ASR_NONE;
+  63   4                                      break;
+  64   4                              }
+  65   3                              case LD_ASR_FOUNDZERO:
+  66   3                              default:
+  67   3                              {
+  68   4                                      nAsrStatus = LD_ASR_NONE;
+  69   4                                      break;
+  70   4                              }
+  71   3                      }// switch                              
+  72   2              }// while
+  73   1      
+  74   1      }
+  75          /***********************************************************
+  76          * 名    称：     LED灯测试
+  77          * 功    能： 单片机是否工作指示
+  78          * 入口参数： 无 
+  79          * 出口参数：无
+  80          * 说    明：                                     
+  81          **********************************************************/
+  82          void Led_test(void)
+  83          {
+  84   1              LED=~ LED;
+  85   1              Delay200ms();
+  86   1              LED=~ LED;
+  87   1              Delay200ms();
+  88   1              LED=~ LED;
+  89   1              Delay200ms();
+  90   1              LED=~ LED;
+  91   1              Delay200ms();
+  92   1              LED=~ LED;
+  93   1              Delay200ms();
+  94   1              LED=~ LED;
+  95   1      }
+  96          /***********************************************************
+  97          * 名    称： void MCU_init()
+  98          * 功    能： 单片机初始化
+  99          * 入口参数：  
+ 100          * 出口参数：
+ 101          * 说    明：                                     
+ 102          * 调用方法： 
+ 103          **********************************************************/ 
+ 104          void MCU_init()
+ 105          {
+ 106   1              P0 = 0xff;
+ 107   1              P1 = 0xff;
+ 108   1              P2 = 0xff;
+ 109   1              P3 = 0xff;
+ 110   1              P4 = 0xff;
+ 111   1      
+ 112   1              P1M0=0XFF;      //P1端口设置为推挽输出功能，即提高IO口驱动能力，从驱动继电器模块工作
+ 113   1              P1M1=0X00;
+ 114   1      
+ 115   1              LD_MODE = 0;            //      设置MD管脚为低，并行模式读写
+ 116   1              IE0=1;
+C51 COMPILER V9.00   MAIN                                                                  12/22/2017 18:37:22 PAGE 3   
+
+ 117   1              EX0=1;
+ 118   1              EA=1;
+ 119   1      }
+ 120          /***********************************************************
+ 121          * 名    称：    延时函数
+ 122          * 功    能：
+ 123          * 入口参数：  
+ 124          * 出口参数：
+ 125          * 说    明：                                     
+ 126          * 调用方法： 
+ 127          **********************************************************/ 
+ 128          void Delay200us()               //@22.1184MHz
+ 129          {
+ 130   1              unsigned char i, j;
+ 131   1              _nop_();
+ 132   1              _nop_();
+ 133   1              i = 5;
+ 134   1              j = 73;
+ 135   1              do
+ 136   1              {
+ 137   2                      while (--j);
+ 138   2              } while (--i);
+ 139   1      }
+ 140          
+ 141          void  delay(unsigned long uldata)
+ 142          {
+ 143   1              unsigned int j  =  0;
+ 144   1              unsigned int g  =  0;
+ 145   1              while(uldata--)
+ 146   1              Delay200us();
+ 147   1      }
+ 148          
+ 149          void Delay200ms()               //@22.1184MHz
+ 150          {
+ 151   1              unsigned char i, j, k;
+ 152   1      
+ 153   1              i = 17;
+ 154   1              j = 208;
+ 155   1              k = 27;
+ 156   1              do
+ 157   1              {
+ 158   2                      do
+ 159   2                      {
+ 160   3                              while (--k);
+ 161   3                      } while (--j);
+ 162   2              } while (--i);
+ 163   1      }
+ 164          /***********************************************************
+ 165          * 名    称： 中断处理函数
+ 166          * 功    能：
+ 167          * 入口参数：  
+ 168          * 出口参数：
+ 169          * 说    明：                                     
+ 170          * 调用方法： 
+ 171          **********************************************************/ 
+ 172          void ExtInt0Handler(void) interrupt 0  
+ 173          {       
+ 174   1              ProcessInt0();                          /*      LD3320 送出中断信号，包括ASR和播放MP3的中断，需要在中断处理函数中分别处理*/
+ 175   1      }
+ 176          /***********************************************************
+ 177          * 名    称：用户执行函数 
+ 178          * 功    能：识别成功后，执行动作可在此进行修改 
+C51 COMPILER V9.00   MAIN                                                                  12/22/2017 18:37:22 PAGE 4   
+
+ 179          * 入口参数： 无 
+ 180          * 出口参数：无
+ 181          * 说    明：                                     
+ 182          **********************************************************/
+ 183          void    User_handle(uint8 dat)
+ 184          {
+ 185   1           //UARTSendByte(dat);//串口识别码（十六进制）
+ 186   1      
+ 187   1                               switch(dat)               /*对结果执行相关操作,客户修改*/
+ 188   1                                {
+ 189   2                          case a:      /*命令“全开”*/
+ 190   2                                                      PrintCom("“结束001”命令识别成功\r\n");//串口输出提示信息（可删除）
+ 191   2                                                      PA1=0;//让PA1端口为低电平
+ 192   2                                                      PA2=0;//让PA2端口为低电平
+ 193   2                                                      PA3=1;//让PA3端口为低电平
+ 194   2                                                                                                               break;
+ 195   2                                              case b:         /*命令“复位”*/                                
+ 196   2                                                      PrintCom("“前进010”命令识别成功\r\n"); //串口输出提示信息（可删除）
+ 197   2                                                      PA1=0;//让PA1端口为低电平
+ 198   2                                                      PA2=1;//让PA2端口为高电平
+ 199   2                                                      PA3=0;//让PA3端口为低电平
+ 200   2                                                                                                              break;
+ 201   2                                              case c:         /*命令“复位”*/                                
+ 202   2                                                      PrintCom("“后退011”命令识别成功\r\n"); //串口输出提示信息（可删除）
+ 203   2                                                  PA1=0;//让PA1端口为低电平
+ 204   2                                                      PA2=1;//让PA2端口为高电平
+ 205   2                                                      PA3=1;//让PA3端口为高电平
+ 206   2                                                                                                              break;
+ 207   2                                              case d:         /*命令“复位”*/                                
+ 208   2                                                      PrintCom("“左转100”命令识别成功\r\n"); //串口输出提示信息（可删除）
+ 209   2                                                      PA1=1;//让PA1端口为高电平
+ 210   2                                                      PA2=0;//让PA2端口为低电平
+ 211   2                                                      PA3=0;//让PA3端口为低电平
+ 212   2                                                                                                              break;
+ 213   2                                              case e:         /*命令“复位”*/                                
+ 214   2                                                      PrintCom("“右转101”命令识别成功\r\n"); //串口输出提示信息（可删除）
+ 215   2                                                      PA1=1;//让PA1端口为高电平
+ 216   2                                                      PA2=0;//让PA2端口为低电平
+ 217   2                                                      PA3=1;//让PA3端口为高电平
+ 218   2                                                                                                              break;
+ 219   2                                              case f:         /*命令“复位”*/                                
+ 220   2                                                      PrintCom("“启动避障模式110”命令识别成功\r\n"); //串口输出提示信息（可删除）
+ 221   2                                                      PA1=1;//让PA1端口为高电平
+ 222   2                                                      PA2=1;//让PA2端口为高电平
+ 223   2                                                      PA3=0;//让PA3端口为低电平
+ 224   2                                              case h:         /*命令“复位”*/                                
+ 225   2                                                      PrintCom("“退出避障模式111”命令识别成功\r\n"); //串口输出提示信息（可删除）
+ 226   2                                                      PA1=1;//让PA1端口为高电平
+ 227   2                                                      PA2=1;//让PA2端口为高电平
+ 228   2                                                      PA3=1;//让PA端口为高电平
+ 229   2                                                                                                              break;                                                                                                                                                                                                                  
+ 230   2                                                              default:PrintCom("请重新识别发口令\r\n"); //串口输出提示信息（可删除）
+ 231   2                                                                                                              break;
+ 232   2      }        
+ 233   1      
+ 234   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    392    ----
+   CONSTANT SIZE    =    217    ----
+   XDATA SIZE       =   ----    ----
+C51 COMPILER V9.00   MAIN                                                                  12/22/2017 18:37:22 PAGE 5   
+
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      1       9
+   IDATA SIZE       =      1       1
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
